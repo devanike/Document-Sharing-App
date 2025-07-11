@@ -1,0 +1,71 @@
+-- Insert sample documents (run after creating admin users)
+-- Replace the uploader_id with actual user IDs from your profiles table
+
+INSERT INTO documents (
+  title,
+  description,
+  file_name,
+  file_size,
+  file_type,
+  file_hash,
+  course_code,
+  course_title,
+  level,
+  semester,
+  document_type,
+  is_public,
+  uploader_id,
+  uploader_role,
+  storage_path
+) VALUES 
+(
+  'Introduction to Programming - Lecture 1',
+  'Basic concepts of programming and algorithm design',
+  'csc101_lecture1.pdf',
+  2048576,
+  'application/pdf',
+  'sample_hash_1',
+  'CSC101',
+  'Introduction to Programming',
+  '100',
+  'First',
+  'lecture_notes',
+  true,
+  'your-admin-user-id-here',
+  'admin',
+  'admin/sample_file_1.pdf'
+),
+(
+  'Data Structures Assignment 1',
+  'Implementation of basic data structures',
+  'csc201_assignment1.pdf',
+  1024768,
+  'application/pdf',
+  'sample_hash_2',
+  'CSC201',
+  'Data Structures',
+  '200',
+  'First',
+  'assignment',
+  true,
+  'your-second-admin-user-id-here', 
+  'admin', 
+  'admin/sample_file_2.pdf'
+),
+(
+  'Database Systems Past Questions',
+  'Previous exam questions for database systems course',
+  'csc301_past_questions.pdf',
+  3072384,
+  'application/pdf',
+  'sample_hash_3',
+  'CSC301',
+  'Database Systems',
+  '300',
+  'Second',
+  'past_question',
+  true,
+  'your-admin-user-id-here',
+  'admin',
+  'admin/sample_file_3.pdf'
+);
