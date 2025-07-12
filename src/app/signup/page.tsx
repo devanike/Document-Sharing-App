@@ -60,51 +60,6 @@ export default function SignUpPage() {
     } finally {
       setLoading(false)
     }
-
-    // try {
-    //   const result = await signUpStudent(form.email, form.password, form.name, form.level)
-    
-    //   const { data: { user } } = await supabase.auth.getUser()
-
-    //   // Sign up the user
-    //   // const { data, error } = await supabase.auth.signUp({
-    //   //   email: form.email,
-    //   //   password: form.password,
-    //   //   options: {
-    //   //     data: {
-    //   //       name: form.name,
-    //   //       level: form.level
-    //   //     }
-    //   //   }
-    //   // })
-
-    //   // if (error) throw error
-
-    //   // Create profile immediately after signup
-    //   if (user) {
-    //     const { error: profileError } = await supabase
-    //       .from('profiles')
-    //       .insert({
-    //         id: data.user.id,
-    //         email: data.user.email,
-    //         role: 'student',
-    //         name: form.name,
-    //         level: form.level
-    //       })
-
-    //     if (profileError) {
-    //       console.error('Profile creation error:', profileError)
-    //       // Continue anyway - profile can be created later during login
-    //     }
-    //   }
-
-    //   setSuccess("Account created successfully! Please check your email for verification.")
-    //   setStep("verify")
-    // } catch (error: any) {
-    //   setError(error.message)
-    // } finally {
-    //   setLoading(false)
-    // }
   }
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
@@ -227,6 +182,7 @@ export default function SignUpPage() {
                   <SelectItem value="200">200 Level</SelectItem>
                   <SelectItem value="300">300 Level</SelectItem>
                   <SelectItem value="400">400 Level</SelectItem>
+                  <SelectItem value="500">500 Level</SelectItem>
                 </SelectContent>
               </Select>
             </div>

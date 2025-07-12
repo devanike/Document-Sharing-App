@@ -12,7 +12,7 @@ export default function HomePage() {
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-6">Welcome to CS DocShare</h1>
           <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
-            Your gateway to academic excellence. Access, share, and collaborate on computer science documents with ease
+            Your gateway to academic excellence. Access, share, and collaborate on Computer Science documents with ease
             and security.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

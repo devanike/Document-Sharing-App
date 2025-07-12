@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,68 +37,120 @@ export default function UploadPage() {
   const router = useRouter()
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    const checkUserAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session) {
+          router.push("/login")
+          return
+        }
 
-  async function checkAuth() {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) {
+        const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
+
+        if (profileError) {
+          console.error("Error fetching profile:", profileError)
+          router.push("/login")
+          return
+        }
+
+        if (profile) {
+          setUser(profile)
+        } else {
+          router.push("/login")
+        }
+      } catch (err) {
+        console.error("Authentication check failed:", err)
         router.push("/login")
-        return
       }
-
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
-
-      if (profile) {
-        setUser(profile)
-      } else {
-        router.push("/login")
-      }
-    } catch (error) {
-      router.push("/login")
     }
-  }
+    checkUserAuth()
+  }, [router])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Callback for file input change
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
       setFile(selectedFile)
       if (!form.title) {
-        setForm({ ...form, title: selectedFile.name.split(".")[0] })
+        setForm((prevForm) => ({ ...prevForm, title: selectedFile.name.split(".")[0] }))
       }
+      setError("");
     }
-  }
+  }, [form.title]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Callback for form input changes
+  const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setForm((prevForm) => ({ ...prevForm, [id]: value }))
+  }, []);
+
+  // Callback for select changes (specific handler for selects)
+  const handleSelectChange = useCallback((id: string, value: string) => {
+    setForm((prevForm) => ({ ...prevForm, [id]: value }))
+  }, []);
+
+  // Main form submission logic
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !user) return
+
+    if (!file) {
+      setError("Please select a file to upload.");
+      return;
+    }
+    if (!user) {
+      setError("User not authenticated. Please log in.");
+      router.push("/login"); 
+      return;
+    }
+    if (!form.title || !form.course_code || !form.course_title || !form.level || !form.semester || !form.document_type) {
+      setError("Please fill in all required fields.");
+      return;
+    }
 
     setLoading(true)
     setError("")
     setSuccess("")
 
     try {
-      // Calculate file hash
       const fileHash = await calculateFileHash(file)
 
-      // Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`
-      const filePath = `${user.id}/${fileName}`
+      const { data: existingDocuments, error: checkError } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("file_hash", fileHash)
+        .limit(1);
 
-      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
+      if (checkError) {
+        throw checkError;
+      }
 
-      if (uploadError) throw uploadError
+      if (existingDocuments && existingDocuments.length > 0) {
+        setError("This file (or an identical version) has already been uploaded.");
+        setLoading(false); 
+        return;
+      }
 
-      // Save document metadata
+      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`; 
+      const filePath = `${user.id}/${uniqueFileName}`; 
+
+      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file);
+
+      if (uploadError) {
+        if (uploadError.message.includes("duplicate key")) {
+            setError("A file with this name already exists in your storage. Please rename your file or try again.");
+        } else {
+            throw uploadError; 
+        }
+      }
+
       const { error: dbError } = await supabase.from("documents").insert({
         title: form.title,
-        description: form.description,
+        description: form.description || null,
         file_name: file.name,
         file_size: file.size,
-        file_type: file.type,
+        file_type: file.type || "application/octet-stream",
         file_hash: fileHash,
         course_code: form.course_code,
         course_title: form.course_title,
@@ -109,21 +161,40 @@ export default function UploadPage() {
         uploader_id: user.id,
         uploader_role: user.role,
         storage_path: filePath,
-      })
+        created_at: new Date().toISOString(),
+      });
 
-      if (dbError) throw dbError
+      if (dbError) {
+        console.error("Database insert error:", dbError);
+        setError(`Failed to save document metadata: ${dbError.message}`);
+        return; 
+      }
 
-      setSuccess("Document uploaded successfully!")
+      setSuccess("Document uploaded successfully! 🎉 Redirecting to documents...");
+      setFile(null);
+      setForm({
+        title: "",
+        description: "",
+        course_code: "",
+        course_title: "",
+        level: "",
+        semester: "",
+        document_type: "",
+        is_public: true,
+      });
+
       setTimeout(() => {
-        router.push("/documents")
-      }, 2000)
-    } catch (error: any) {
-      setError(error.message)
+        router.push("/dashboard"); 
+      }, 2000);
+    } catch (err: any) {
+      console.error("Upload process error:", err);
+      setError(err.message || "An unexpected error occurred during upload.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [file, user, form, router]);
 
+  // Show loading spinner while authenticating
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -154,6 +225,7 @@ export default function UploadPage() {
                   type="file"
                   onChange={handleFileChange}
                   className="hidden"
+                  required
                   accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.zip,.rar"
                 />
                 <label htmlFor="file" className="cursor-pointer">
@@ -164,6 +236,9 @@ export default function UploadPage() {
                         <p className="font-medium">{file.name}</p>
                         <p className="text-sm text-gray-500">{formatFileSize(file.size)}</p>
                       </div>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setFile(null)} className="mt-2">
+                        Remove File
+                      </Button>
                     </div>
                   ) : (
                     <div>
@@ -173,7 +248,7 @@ export default function UploadPage() {
                     </div>
                   )}
                 </label>
-              </div>
+              </div>{!file && <p className="text-red-500 text-sm">A file is required to upload.</p>} 
             </div>
 
             <div className="space-y-2">
@@ -181,7 +256,7 @@ export default function UploadPage() {
               <Input
                 id="title"
                 value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                onChange={handleFormChange}
                 placeholder="Document title"
                 required
               />
@@ -192,7 +267,7 @@ export default function UploadPage() {
               <Textarea
                 id="description"
                 value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                onChange={handleFormChange}
                 placeholder="Brief description of the document"
                 rows={3}
               />
@@ -204,8 +279,9 @@ export default function UploadPage() {
                 <Input
                   id="course_code"
                   value={form.course_code}
-                  onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+                  onChange={handleFormChange}
                   placeholder="e.g., CSC101"
+                  required
                 />
               </div>
 
@@ -214,8 +290,9 @@ export default function UploadPage() {
                 <Input
                   id="course_title"
                   value={form.course_title}
-                  onChange={(e) => setForm({ ...form, course_title: e.target.value })}
+                  onChange={handleFormChange}
                   placeholder="e.g., Introduction to Programming"
+                  required
                 />
               </div>
             </div>
@@ -223,7 +300,7 @@ export default function UploadPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="level">Level</Label>
-                <Select value={form.level} onValueChange={(value) => setForm({ ...form, level: value })}>
+                <Select value={form.level} onValueChange={(value) => handleSelectChange("level", value)} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Select level" />
                   </SelectTrigger>
@@ -232,13 +309,14 @@ export default function UploadPage() {
                     <SelectItem value="200">200 Level</SelectItem>
                     <SelectItem value="300">300 Level</SelectItem>
                     <SelectItem value="400">400 Level</SelectItem>
+                    <SelectItem value="500">500 Level</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="semester">Semester</Label>
-                <Select value={form.semester} onValueChange={(value) => setForm({ ...form, semester: value })}>
+                <Select value={form.semester} onValueChange={(value) => handleSelectChange("semester", value)} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Select semester" />
                   </SelectTrigger>
@@ -252,7 +330,11 @@ export default function UploadPage() {
 
             <div className="space-y-2">
               <Label htmlFor="document_type">Document Type</Label>
-              <Select value={form.document_type} onValueChange={(value) => setForm({ ...form, document_type: value })}>
+              <Select 
+                value={form.document_type} 
+                onValueChange={(value) => handleSelectChange("document_type", value)}
+                required
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select document type" />
                 </SelectTrigger>
@@ -271,7 +353,7 @@ export default function UploadPage() {
                 className="bg-black"
                 id="is_public"
                 checked={form.is_public}
-                onCheckedChange={(checked) => setForm({ ...form, is_public: checked })}
+                onCheckedChange={(checked) => setForm((prevForm) => ({ ...prevForm, is_public: checked }))}
               />
               <Label htmlFor="is_public">Make this document public</Label>
             </div>
@@ -290,7 +372,7 @@ export default function UploadPage() {
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading || !file}>
+            <Button type="submit" className="w-full" disabled={loading || !file || !form.title || !form.course_code || !form.course_title || !form.level || !form.semester || !form.document_type}>
               {loading ? <LoadingSpinner size="sm" /> : "Upload Document"}
             </Button>
           </form>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,9 +15,11 @@ import { supabase } from "@/lib/supabase"
 import type { User, Document } from "@/lib/types"
 import { FileText, Upload, Settings, AlertCircle, CheckCircle } from "lucide-react"
 
+const ITEMS_PER_PAGE = 9
+
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
-  const [documents, setDocuments] = useState<Document[]>([])
+  const [userDocuments, setUserDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState("")
@@ -27,27 +29,45 @@ export default function DashboardPage() {
     name: "",
     level: "",
   })
+  const [currentPage, setCurrentPage] = useState(0) 
+  const [totalUserDocumentCount, setTotalUserDocumentCount] = useState(0)
+  const [documentVisibilityFilter, setDocumentVisibilityFilter] = useState<"all" | "public" | "private">("all") 
+
   const router = useRouter()
 
   useEffect(() => {
-    checkAuth()
+    checkAuthAndFetchData()
   }, [])
 
-  async function checkAuth() {
+  useEffect(() => {
+    if (user) {
+      fetchUserDocuments(user.id, currentPage, documentVisibilityFilter)
+    }
+  }, [user, currentPage, documentVisibilityFilter]) 
+
+  async function checkAuthAndFetchData() {
     try {
+      setLoading(true)
       const {
         data: { session },
       } = await supabase.auth.getSession()
+
       if (!session) {
         router.push("/login")
         return
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", session.user.id)
         .single()
+
+      if (profileError) {
+        console.error("Error fetching profile:", profileError)
+        router.push("/login")
+        return
+      }
 
       if (profile) {
         setUser(profile)
@@ -55,72 +75,73 @@ export default function DashboardPage() {
           name: profile.name,
           level: profile.level || "",
         })
-        await fetchUserDocuments(profile.id)
       } else {
         router.push("/login")
       }
     } catch (error) {
+      console.error("Auth check or profile fetch error:", error)
       router.push("/login")
     } finally {
       setLoading(false)
     }
   }
 
-  async function fetchUserDocuments(userId: string) {
-    try {
+  const fetchUserDocuments = useCallback(
+    async (userId: string, page: number, visibilityFilter: "all" | "public" | "private") => {
+      try {
+        setRefreshing(true)
+        setError("")
 
-      const { data: simpleData, error: simpleError } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("uploader_id", userId)
+        const from = page * ITEMS_PER_PAGE
+        const to = from + ITEMS_PER_PAGE - 1
 
-      console.log("Simple document query result:", simpleData) 
-      console.log("Simple document query error:", simpleError) 
+        let query = supabase
+          .from("documents")
+          .select(
+            `
+            *,
+            uploader:profiles(name, role) 
+            `,
+            { count: "exact" }, 
+          )
+          .eq("uploader_id", userId) 
 
-      if (simpleError) {
-        console.error("Simple query error:", simpleError)
-        setError(`Database error: ${simpleError.message}`)
-        return
+        if (visibilityFilter === "public") {
+          query = query.eq("is_public", true)
+        } else if (visibilityFilter === "private") {
+          query = query.eq("is_public", false)
+        }
+
+        const { data, error, count } = await query
+          .order("created_at", { ascending: false }) 
+          .range(from, to) 
+
+        if (error) {
+          console.error("Error fetching user documents:", error)
+          setError(`Failed to fetch documents: ${error.message}`)
+          setUserDocuments([]) 
+          setTotalUserDocumentCount(0)
+        } else {
+          // Map to ensure 'uploader' is directly on the Document object for DocumentCard
+          const documentsWithUploader = data.map(doc => ({
+            ...doc,
+            uploader: doc.uploader ? doc.uploader : { name: "Unknown", role: "unknown" } 
+          })) as Document[];
+
+          setUserDocuments(documentsWithUploader)
+          setTotalUserDocumentCount(count || 0)
+        }
+      } catch (err: any) {
+        console.error("fetchUserDocuments caught error:", err)
+        setError(`An unexpected error occurred: ${err.message}`)
+      } finally {
+        setRefreshing(false)
       }
+    },
+    [], 
+  )
 
-      // profiles!documents_uploader_id_fkey(name, role)
-      const { data, error } = await supabase
-        .from("documents")
-        .select(`
-          *,
-          profiles(
-            name,
-            role
-          ) 
-        `)
-        .eq("uploader_id", userId)
-        .order("created_at", { ascending: false })
-
-    if (error) {
-        console.error("Complex query error:", error)
-
-        setDocuments(simpleData || [])
-        setError(`Join query failed: ${error.message}. Using simple query.`)
-      } else {
-        setDocuments(data || [])
-      }
-
-      // Additional debugging - check if documents table exists and has data
-      const { data: allDocs, error: allDocsError } = await supabase
-        .from("documents")
-        .select("id, uploader_id, file_name")
-        .limit(5)
-
-      console.log("Sample documents in table:", allDocs) // Debug log
-      console.log("All docs query error:", allDocsError) // Debug log
-
-    } catch (error: any) {
-      console.error("fetchUserDocuments error:", error)
-      setError(`Failed to fetch documents: ${error.message}`)
-    }
-  }
-
-  async function updateProfile() {
+  const updateProfile = useCallback(async () => {
     if (!user) return
 
     setUpdating(true)
@@ -128,7 +149,7 @@ export default function DashboardPage() {
     setSuccess("")
 
     try {
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({
           name: profileForm.name,
@@ -137,66 +158,78 @@ export default function DashboardPage() {
         })
         .eq("id", user.id)
 
-      if (error) throw error
+      if (updateError) throw updateError
 
-      setUser({ ...user, name: profileForm.name, level: profileForm.level })
-      setSuccess("Profile updated successfully!")
-    } catch (error: any) {
-      setError(error.message)
+      // Update the local user state immediately
+      setUser((prevUser) => (prevUser ? { ...prevUser, name: profileForm.name, level: profileForm.level } : null))
+      setSuccess("Profile updated successfully! ✨")
+    } catch (err: any) {
+      console.error("Profile update error:", err)
+      setError(err.message)
     } finally {
       setUpdating(false)
     }
-  }
+  }, [user, profileForm.name, profileForm.level])
 
-  async function handleDownload(doc: Document) {
+
+  const handleDownload = useCallback(async (doc: Document) => {
     try {
       const { data, error } = await supabase.storage.from("documents").download(doc.storage_path)
 
       if (error) throw error
 
-      const url = URL.createObjectURL(data)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = doc.file_name
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (error: any) {
-      setError("Failed to download file")
+      if (typeof window !== "undefined" && data) { // Ensure window is defined for browser operations
+        const url = URL.createObjectURL(data)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = doc.file_name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else if (!data) {
+        setError("Failed to download file: No data received.")
+      } else {
+        console.warn("Download attempted in a non-browser environment. Skipping DOM manipulation.");
+      }
+    } catch (err: any) {
+      console.error("Download error:", err)
+      setError(`Failed to download file: ${err.message || "An unknown error occurred."}`)
     }
-  }
+  }, [])
 
-  async function handleDelete(documentId: string) {
-    try {
-      const { error } = await supabase.from("documents").delete().eq("id", documentId)
-
-      if (error) throw error
-
-      setDocuments(documents.filter((doc) => doc.id !== documentId))
-      setSuccess("Document deleted successfully!")
-    } catch (error: any) {
-      setError(error.message)
-    }
-  }
-
-  async function refreshDocuments() {
+  const handleDelete = useCallback(async (documentId: string) => {
     if (!user) return
 
-    setRefreshing(true)
-    setError("")
-    setSuccess("")
-
     try {
-      await fetchUserDocuments(user.id)
-      console.log("Refresh successful")
-      setSuccess("Documents refreshed!")
-    } catch {
-      setError("Failed to refresh documents")
-    } finally {
-      setRefreshing(false)
+      setError("")
+      setSuccess("")
+
+      // Find the document to get its storage_path
+      const docToDelete = userDocuments.find((doc) => doc.id === documentId)
+
+      // Delete from database
+      const { error: dbError } = await supabase.from("documents").delete().eq("id", documentId)
+      if (dbError) throw dbError
+
+      // Delete from storage if storage_path exists
+      if (docToDelete && docToDelete.storage_path) {
+        const { error: storageError } = await supabase.storage.from("documents").remove([docToDelete.storage_path])
+        if (storageError) {
+          console.warn("Could not delete file from storage (might already be gone or permissions issue):", storageError.message)
+        }
+      }
+
+      // Re-fetch documents to update the list and correct pagination
+      fetchUserDocuments(user.id, currentPage, documentVisibilityFilter)
+      setSuccess("Document deleted successfully! ✅")
+    } catch (err: any) {
+      console.error("Delete error:", err)
+      setError(err.message || "Failed to delete document.")
     }
-  }
+  }, [user, userDocuments, fetchUserDocuments, currentPage, documentVisibilityFilter]) 
+
+  const totalPages = useMemo(() => Math.ceil(totalUserDocumentCount / ITEMS_PER_PAGE), [totalUserDocumentCount]);
 
   if (loading) {
     return (
@@ -222,7 +255,10 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={refreshDocuments}
+            onClick={() => {
+              setCurrentPage(0); 
+              fetchUserDocuments(user.id, 0, documentVisibilityFilter); 
+            }}
             disabled={refreshing}
           >
             {refreshing
@@ -230,8 +266,6 @@ export default function DashboardPage() {
               : "Refresh"}
           </Button>
 
-          {/* {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-          {success && <Alert><AlertDescription>{success}</AlertDescription></Alert>} */}
           <Button asChild>
             <a href="/upload">
               <Upload className="w-4 h-4 mr-2" />
@@ -241,13 +275,28 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Centralized error and success messages */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert variant="default" className="bg-green-50 text-green-700 border-green-200">
+          <CheckCircle className="h-4 w-4" />
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Dashboard Stats Cards */}
       <div className="grid gap-6 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documents.length}</div>
+            <div className="text-2xl font-bold">{totalUserDocumentCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -255,7 +304,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-gray-600">Public Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documents.filter((doc) => doc.is_public).length}</div>
+            <div className="text-2xl font-bold">{userDocuments.filter((doc) => doc.is_public).length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -263,7 +312,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-gray-600">Private Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documents.filter((doc) => !doc.is_public).length}</div>
+            <div className="text-2xl font-bold">{userDocuments.filter((doc) => !doc.is_public).length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -285,9 +334,32 @@ export default function DashboardPage() {
         <TabsContent value="documents" className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">My Documents</h2>
+            {/* New: Public/Private Filter for My Documents */}
+            <Select
+              value={documentVisibilityFilter}
+              onValueChange={(value: "all" | "public" | "private") => {
+                setDocumentVisibilityFilter(value);
+                setCurrentPage(0); 
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by visibility" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Documents</SelectItem>
+                <SelectItem value="public">Public</SelectItem>
+                <SelectItem value="private">Private</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          {documents.length === 0 ? (
+          {refreshing && ( 
+            <div className="flex items-center justify-center min-h-[200px]">
+              <LoadingSpinner size="lg" />
+            </div>
+          )}
+
+          {!refreshing && userDocuments.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -299,17 +371,42 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {documents.map((document) => (
-                <DocumentCard
-                  key={document.id}
-                  document={document}
-                  canDelete={true}
-                  onDelete={handleDelete}
-                  onDownload={handleDownload}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {userDocuments.map((document) => (
+                  <DocumentCard
+                    key={document.id}
+                    document={document}
+                    canDelete={true}
+                    onDelete={handleDelete}
+                    onDownload={handleDownload}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination Controls for My Documents */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center space-x-2 mt-8">
+                  <Button
+                    onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+                    disabled={currentPage === 0 || refreshing}
+                    variant="outline"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-gray-700">
+                    Page {currentPage + 1} of {totalPages}
+                  </span>
+                  <Button
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                    disabled={currentPage === totalPages - 1 || refreshing}
+                    variant="outline"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -353,6 +450,7 @@ export default function DashboardPage() {
                       <SelectItem value="200">200 Level</SelectItem>
                       <SelectItem value="300">300 Level</SelectItem>
                       <SelectItem value="400">400 Level</SelectItem>
+                      <SelectItem value="500">500 Level</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -364,7 +462,8 @@ export default function DashboardPage() {
                 <p className="text-xs text-gray-500">Role cannot be changed</p>
               </div>
 
-              {error && (
+              {/* Error and Success messages specific to profile update */}
+              {/* {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
@@ -376,7 +475,7 @@ export default function DashboardPage() {
                   <CheckCircle className="h-4 w-4" />
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
-              )}
+              )} */}
 
               <Button onClick={updateProfile} disabled={updating}>
                 {updating ? <LoadingSpinner size="sm" /> : "Update Profile"}
