@@ -268,8 +268,8 @@ export default function DashboardPage() {
 
           <Button asChild>
             <a href="/upload">
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Document
+              <Upload className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:block">Upload Document</span>
             </a>
           </Button>
         </div>
@@ -326,9 +326,19 @@ export default function DashboardPage() {
       </div>
 
       <Tabs defaultValue="documents" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="documents">My Documents</TabsTrigger>
-          <TabsTrigger value="profile">Profile Settings</TabsTrigger>
+        <TabsList className="bg-gray-200">
+          <TabsTrigger 
+            value="documents" 
+            className="text-sm font-medium rounded-md transition-all data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm hover:bg-blue-50 hover:text-blue-600 text-gray-600 h-10"
+          >
+            My Documents
+          </TabsTrigger>
+          <TabsTrigger 
+            value="profile" 
+            className="text-sm font-medium rounded-md transition-all data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-sm hover:bg-blue-50 hover:text-blue-600 text-gray-600 h-10"
+          >
+            Profile Settings
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="space-y-4">

@@ -155,9 +155,19 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="student" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="student">Student</TabsTrigger>
-              <TabsTrigger value="admin">Admin</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 bg-transparent border-b border-gray-200 rounded-none p-0 mb-4">
+              <TabsTrigger 
+                value="student"
+                className="text-sm font-semibold rounded-none transition-all data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-b-blue-600 hover:bg-blue-50 hover:text-blue-600 text-gray-600 h-12 border-b-2 border-transparent"
+              >
+                Student
+              </TabsTrigger>
+              <TabsTrigger 
+                value="admin"
+                className="text-sm font-semibold rounded-none transition-all data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-b-blue-600 hover:bg-blue-50 hover:text-blue-600 text-gray-600 h-12 border-b-2 border-transparent"
+              >
+                Admin
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="student">
@@ -203,7 +213,7 @@ export default function LoginPage() {
                   <ReCAPTCHA
                     ref={studentRecaptchaRef}
                     sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
-                    onChange={() => setError("")} // Clear error when reCAPTCHA is completed
+                    onChange={() => setError("")} 
                   />
                 </div>
 
