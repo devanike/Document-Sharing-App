@@ -9,8 +9,8 @@ export interface User {
 }
 
 export interface Document {
-  createElement(arg0: string): unknown
-  body: any
+  // createElement(arg0: string): unknown
+  // body: any
   id: string
   title: string
   description?: string

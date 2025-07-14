@@ -16,14 +16,25 @@ export function DocumentFilters({ filters, onFiltersChange }: DocumentFiltersPro
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   const handleFilterChange = (key: keyof DocumentFilters, value: string) => {
-    onFiltersChange({
-      ...filters,
-      [key]: value || undefined,
-    })
-  }
+    if (key === "search") {
+      onFiltersChange({ ...filters, [key]: value });
+    } else {
+      onFiltersChange({
+        ...filters,
+        [key]: value === "all" ? undefined : value, 
+      });
+    }
+  };
 
   const clearFilters = () => {
-    onFiltersChange({})
+    onFiltersChange({
+      search: "",
+      course_code: undefined,
+      level: undefined,
+      semester: undefined,
+      document_type: undefined,
+      uploader_role: undefined,
+    })
     setShowAdvanced(false)
   }
 

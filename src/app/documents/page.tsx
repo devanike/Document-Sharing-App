@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense, useCallback } from "react"
+import { useState, useEffect, Suspense, useCallback, useMemo } from "react"
 import { DocumentCard } from "@/components/document-card"
 import { DocumentFilters } from "@/components/document-filters"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -14,7 +14,6 @@ const ITEMS_PER_PAGE = 12
 
 function DocumentsContent() {
   const [documents, setDocuments] = useState<Document[]>([])
-  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([])
   const [filters, setFilters] = useState<DocumentFiltersType>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -22,30 +21,22 @@ function DocumentsContent() {
   const [currentPage, setCurrentPage] = useState(0) 
   const [totalDocumentCount, setTotalDocumentCount] = useState(0)
 
-  useEffect(() => {
-    fetchDocuments(currentPage, filters)
-  }, [currentPage, filters])
+  // Debounce search to avoid excessive API calls
+  const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
 
-  useEffect(() => {
-    getCurrentUser()
-  }, [])
+  function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState(value)
 
-  async function getCurrentUser() {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (session) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
+    useEffect(() => {
+      const handler = setTimeout(() => setDebouncedValue(value), delay)
+      return () => clearTimeout(handler)
+    }, [value, delay])
 
-        if (profile) {
-          setUser(profile)
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error)
-    }
+    return debouncedValue
   }
+
+  const debouncedFilters = useDebounce(filters, 500)
 
   const fetchDocuments = useCallback(
     async (pageToFetch: number, currentFilters: DocumentFiltersType) => {
@@ -59,11 +50,10 @@ function DocumentsContent() {
         let query = supabase
           .from("documents")
           .select(
-            `
-            *,
+            `*,
             uploader:profiles(id, name, role)
           `,
-            { count: "exact" }, // Requests the exact count of matching rows
+            { count: "exact" }, 
           )
           .eq("is_public", true)
 
@@ -97,7 +87,7 @@ function DocumentsContent() {
         if (documentsError) throw documentsError
 
         setDocuments(documentsData as Document[])
-        setFilteredDocuments(documentsData as Document[]) 
+        // setFilteredDocuments(documentsData as Document[]) 
         setTotalDocumentCount(count || 0)
       } catch (error: any) {
         console.error("Fetch documents error:", error)
@@ -109,12 +99,56 @@ function DocumentsContent() {
     [], 
   )
 
+  useEffect(() => {
+    fetchDocuments(currentPage, debouncedFilters)
+  }, [currentPage, debouncedFilters, fetchDocuments])
+
+  // Fetch documents when page or filters change
+  useEffect(() => {
+    fetchDocuments(currentPage, filters)
+  }, [currentPage, filters, fetchDocuments])
+
+  // Get current user once on mount
+  useEffect(() => {
+    getCurrentUser()
+  }, [])
+
+  async function getCurrentUser() {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single()
+
+        if (profile) {
+          setUser(profile)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error)
+    }
+  }
+
   const handleFiltersChange = useCallback(
-    (newFilters: DocumentFiltersType) => {
-      setFilters(newFilters)
-      setCurrentPage(0) 
+    (newFiltersPartial: DocumentFiltersType) => {
+      setFilters((prevFilters) => {
+        const updatedFilters = { ...prevFilters, ...newFiltersPartial }
+        Object.entries(updatedFilters).forEach(([key, value]) => {
+          if (value === "all" || value === "") {
+            delete updatedFilters[key as keyof DocumentFiltersType]
+          }
+        })
+        return updatedFilters
+      })
+      setCurrentPage(0)
     },
-    [],
+    []
   )
 
   const handleDownload = useCallback(async (document: Document) => {
@@ -208,7 +242,7 @@ function DocumentsContent() {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-600">
-          Showing {filteredDocuments.length} of {totalDocumentCount} documents
+          Showing {documents.length} of {totalDocumentCount} documents
         </p>
       </div>
 
@@ -218,13 +252,13 @@ function DocumentsContent() {
         </div>
       )}
 
-      {!loading && filteredDocuments.length === 0 ? (
+      {!loading && documents.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500">No documents found matching your criteria.</p>
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredDocuments.map((document) => (
+          {documents.map((document) => (
             <DocumentCard
               key={document.id}
               document={document}
