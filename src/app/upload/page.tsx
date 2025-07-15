@@ -20,8 +20,6 @@ import { Upload, File, AlertCircle, CheckCircle, RefreshCw } from "lucide-react"
 
 // File size limits (in bytes)
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-const RETRY_DELAY_MS = 5000;
-const MAX_RETRIES = 3
 const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword',
@@ -140,295 +138,112 @@ export default function UploadPage() {
   }, [])
 
   // Main form submission logic
-  // const handleSubmit = useCallback(async (e: React.FormEvent) => {
-  //   e.preventDefault()
-
-  //   if (!file) {
-  //     setError("Please select a file to upload.")
-  //     return
-  //   }
-  //   if (!user) {
-  //     setError("User not authenticated. Please log in.")
-  //     router.push("/login") 
-  //     return
-  //   }
-  //   if (!form.title || !form.course_code || !form.course_title || !form.level || !form.semester || !form.document_type) {
-  //     setError("Please fill in all required fields.")
-  //     return
-  //   }
-
-  //   // Validate file again before upload
-  //   const validationError = validateFile(file)
-  //   if (validationError) {
-  //     setError(validationError)
-  //     return
-  //   }
-
-  //   // setLoading(true)
-  //   // setError("")
-  //   // setSuccess("")
-  //   // setRetryCount(0)
-  //   // setIsRetrying(false)
-
-  //    const attemptUpload = async (currentRetry = 0) => {
-  //     setLoading(true);
-  //     setError("");
-  //     setSuccess("");
-  //     setIsRetrying(currentRetry > 0);
-
-  //     try {      
-  //       const fileHash = await calculateFileHash(file)
-
-  //       const { data, error } = await supabase
-  //         .from("documents")
-  //         .select("id")
-  //         .eq("file_hash", fileHash)
-  //         .limit(1)
-
-  //       if (error) throw error
-  //       if (data && data.length > 0) {
-  //         setError("This file (or an identical version) has already been uploaded.")
-  //         return
-  //       }
-        
-  //       const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}` 
-  //       const filePath = `${user.id}/${uniqueFileName}` 
-
-  //       // const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
-
-  //       const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file, {
-  //         cacheControl: '3600', // Example: Add cache control
-  //         upsert: false // Ensure we don't accidentally overwrite
-  //       });
-
-  //       // if (uploadError) {
-  //       //   if (uploadError.message.includes("duplicate key")) {
-  //       //     setError("A file with this name already exists in your storage. Please rename your file or try again.")
-  //       //   } else {
-  //       //     throw uploadError
-  //       //   }
-  //       //   return
-  //       // }
-
-  //       if (uploadError) {
-  //         if (uploadError.message.includes("duplicate key")) {
-  //           setError("A file with this name already exists in your storage. Please rename your file or try again.");
-  //           setLoading(false); // Important: reset loading on this specific error
-  //           return;
-  //         } else if (currentRetry < MAX_RETRIES) {
-  //           console.warn(`Upload failed, retrying (${currentRetry + 1}/${MAX_RETRIES})...`, uploadError);
-  //           setRetryCount(currentRetry + 1);
-  //           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-  //           attemptUpload(currentRetry + 1); // Recursive call for retry
-  //           return; // Exit here, as the retry will continue the process
-  //         } else {
-  //           throw uploadError; // If max retries reached, throw the error
-  //         }
-  //       }
-
-  //       const { error: dbError } = await supabase.from("documents").insert({
-  //         title: form.title,
-  //         description: form.description || null,
-  //         file_name: file.name,
-  //         file_size: file.size,
-  //         file_type: file.type || "application/octet-stream",
-  //         file_hash: fileHash,
-  //         course_code: form.course_code,
-  //         course_title: form.course_title,
-  //         level: form.level,
-  //         semester: form.semester,
-  //         document_type: form.document_type,
-  //         is_public: form.is_public,
-  //         uploader_id: user.id,
-  //         uploader_role: user.role,
-  //         storage_path: filePath,
-  //         created_at: new Date().toISOString(),
-  //       })
-
-  //       // if (dbError) {
-  //       //   console.error("Database insert error:", dbError)
-  //       //   throw new Error(`Failed to save document metadata: ${dbError.message}`)
-  //       // }
-
-  //       if (dbError) {
-  //       console.error("Database insert error:", dbError);
-  //       if (currentRetry < MAX_RETRIES) {
-  //         console.warn(`DB insert failed, retrying (${currentRetry + 1}/${MAX_RETRIES})...`, dbError);
-  //         setRetryCount(currentRetry + 1);
-  //         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-  //         attemptUpload(currentRetry + 1);
-  //         return;
-  //       } else {
-  //         throw new Error(`Failed to save document metadata: ${dbError.message}`);
-  //       }
-  //     }
-
-  //       setSuccess("Document uploaded successfully! 🎉 Redirecting to documents...")
-        
-  //       setFile(null)
-  //       setForm({
-  //         title: "",
-  //         description: "",
-  //         course_code: "",
-  //         course_title: "",
-  //         level: "",
-  //         semester: "",
-  //         document_type: "",
-  //         is_public: true,
-  //       })
-
-  //       setTimeout(() => {
-  //         router.push("/dashboard")
-  //       }, 2000)
-  //     }  catch (err: any) {
-  //       console.error("Upload process error:", err);
-  //       setError(err.message || "An unexpected error occurred during upload.");
-  //     } finally {
-  //       setLoading(false);
-  //       setIsRetrying(false); // Reset retry state
-  //     }
-  //   }
-  // }, [file, user, form, router, validateFile])
-
-  // Main form submission logic
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
     if (!file) {
-      setError("Please select a file to upload.");
-      return;
+      setError("Please select a file to upload.")
+      return
     }
     if (!user) {
-      setError("User not authenticated. Please log in.");
-      router.push("/login");
-      return;
+      setError("User not authenticated. Please log in.")
+      router.push("/login") 
+      return
     }
     if (!form.title || !form.course_code || !form.course_title || !form.level || !form.semester || !form.document_type) {
-      setError("Please fill in all required fields.");
-      return;
+      setError("Please fill in all required fields.")
+      return
     }
 
     // Validate file again before upload
-    const validationError = validateFile(file);
+    const validationError = validateFile(file)
     if (validationError) {
-      setError(validationError);
-      return;
+      setError(validationError)
+      return
     }
 
-    const attemptUpload = async (currentRetry = 0) => {
-      setLoading(true);
-      setError("");
-      setSuccess("");
-      setIsRetrying(currentRetry > 0);
+    setLoading(true)
+    setError("")
+    setSuccess("")
+    setRetryCount(0)
+    setIsRetrying(false)
 
-      try {
-        const fileHash = await calculateFileHash(file);
+    try {      
+      const fileHash = await calculateFileHash(file)
 
-        const { data, error: duplicateCheckError } = await supabase
-          .from("documents")
-          .select("id")
-          .eq("file_hash", fileHash)
-          .limit(1);
+      const { data, error } = await supabase
+      .from("documents")
+      .select("id")
+      .eq("file_hash", fileHash)
+      .limit(1)
 
-        if (duplicateCheckError) throw duplicateCheckError;
-        if (data && data.length > 0) {
-          setError("This file (or an identical version) has already been uploaded.");
-          setLoading(false); // Important: reset loading on this specific error
-          return;
-        }
-
-        const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-        const filePath = `${user.id}/${uniqueFileName}`;
-
-        const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file, {
-          cacheControl: '3600', // Example: Add cache control
-          upsert: false // Ensure we don't accidentally overwrite
-        });
-
-        if (uploadError) {
-          if (uploadError.message.includes("duplicate key")) {
-            setError("A file with this name already exists in your storage. Please rename your file or try again.");
-            setLoading(false); // Important: reset loading on this specific error
-            return;
-          } else if (currentRetry < MAX_RETRIES) {
-            console.warn(`Upload failed, retrying (${currentRetry + 1}/${MAX_RETRIES})...`, uploadError);
-            setRetryCount(currentRetry + 1);
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-            attemptUpload(currentRetry + 1); // Recursive call for retry
-            return; // Exit here, as the retry will continue the process
-          } else {
-            throw uploadError; // If max retries reached, throw the error
-          }
-        }
-
-        const { error: dbError } = await supabase.from("documents").insert({
-          title: form.title,
-          description: form.description || null,
-          file_name: file.name,
-          file_size: file.size,
-          file_type: file.type || "application/octet-stream",
-          file_hash: fileHash,
-          course_code: form.course_code,
-          course_title: form.course_title,
-          level: form.level,
-          semester: form.semester,
-          document_type: form.document_type,
-          is_public: form.is_public,
-          uploader_id: user.id,
-          uploader_role: user.role,
-          storage_path: filePath,
-          created_at: new Date().toISOString(),
-        });
-
-        if (dbError) {
-          console.error("Database insert error:", dbError);
-          if (currentRetry < MAX_RETRIES) {
-            console.warn(`DB insert failed, retrying (${currentRetry + 1}/${MAX_RETRIES})...`, dbError);
-            setRetryCount(currentRetry + 1);
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-            attemptUpload(currentRetry + 1);
-            return;
-          } else {
-            throw new Error(`Failed to save document metadata: ${dbError.message}`);
-          }
-        }
-
-        setSuccess("Document uploaded successfully! 🎉 Redirecting to documents...");
-
-        setFile(null);
-        setForm({
-          title: "",
-          description: "",
-          course_code: "",
-          course_title: "",
-          level: "",
-          semester: "",
-          document_type: "",
-          is_public: true,
-        });
-
-        setTimeout(() => {
-          router.push("/dashboard");
-        }, 2000);
-      } catch (err: any) {
-        console.error("Upload process error:", err);
-        // Enhance error messages for user
-        if (err.message.includes("Network Error") || err.message.includes("Failed to fetch")) {
-          setError("Network issue: Please check your internet connection and try again. It might also be a timeout.");
-        } else if (err.message.includes("timeout")) {
-          setError("Upload timed out. Your internet might be slow or unstable. Please try again.");
-        } else {
-          setError(err.message || "An unexpected error occurred during upload.");
-        }
-      } finally {
-        setLoading(false);
-        setIsRetrying(false); // Reset retry state
+      if (error) throw error
+      if (data && data.length > 0) {
+        setError("This file (or an identical version) has already been uploaded.")
+        return
       }
-    };
+      
+      const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`
+      const filePath = `${user.id}/${uniqueFileName} `
 
-    // !!! IMPORTANT: CALL THE ATTEMPT UPLOAD FUNCTION HERE !!!
-    attemptUpload();
-  }, [file, user, form, router, validateFile]);
+      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
+      if (uploadError) {
+        if (uploadError.message.includes("duplicate key")) {
+          setError("A file with this name already exists in your storage. Please rename your file or try again.")
+        } else {
+          throw uploadError
+        }
+        return
+      }
+
+      const { error: dbError } = await supabase.from("documents").insert({
+        title: form.title,
+        description: form.description || null,
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.type || "application/octet-stream",
+        file_hash: fileHash,
+        course_code: form.course_code,
+        course_title: form.course_title,
+        level: form.level,
+        semester: form.semester,
+        document_type: form.document_type,
+        is_public: form.is_public,
+        uploader_id: user.id,
+        uploader_role: user.role,
+        storage_path: filePath,
+        created_at: new Date().toISOString(),
+      })
+
+      if (dbError) {
+        console.error("Database insert error:", dbError)
+        throw new Error(`Failed to save document metadata: ${dbError.message}`)
+      }
+
+      setSuccess("Document uploaded successfully! 🎉 Redirecting to documents...")
+      
+      setFile(null)
+      setForm({
+        title: "",
+        description: "",
+        course_code: "",
+        course_title: "",
+        level: "",
+        semester: "",
+        document_type: "",
+        is_public: true,
+      })
+
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 2000)
+    } catch (err: any) {
+      console.error("Upload process error:", err)
+      setError(err.message || "An unexpected error occurred during upload.")
+    } finally {
+      setLoading(false)
+    }
+  }, [file, user, form, router, validateFile])
 
   // Show loading spinner while authenticating
   if (!user) {
@@ -601,30 +416,10 @@ export default function UploadPage() {
               <Label htmlFor="is_public">Make this document public</Label>
             </div>
 
-            {/* {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )} */}
-
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {error}
-                  {retryCount > 0 && <span className="ml-2">(Attempt {retryCount}/{MAX_RETRIES})</span>}
-                  {error.includes("Network issue") && !isRetrying && (
-                    <Button
-                      onClick={() => handleSubmit(new Event('submit') as React.FormEvent<HTMLFormElement>)}
-                      variant="ghost"
-                      size="sm"
-                      className="ml-2"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" /> Try again
-                    </Button>
-                  )}
-                </AlertDescription>
+                <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
