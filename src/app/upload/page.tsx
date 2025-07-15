@@ -615,7 +615,7 @@ export default function UploadPage() {
                   {error}
                   {retryCount > 0 && <span className="ml-2">(Attempt {retryCount}/{MAX_RETRIES})</span>}
                   {error.includes("Network issue") && !isRetrying && (
-                    <Button onClick={() => handleSubmit(new Event('submit'))} variant="ghost" size="sm" className="ml-2">
+                    <Button onClick={() => handleSubmit()} variant="ghost" size="sm" className="ml-2">
                       <RefreshCw className="h-4 w-4 mr-2" /> Try again
                     </Button>
                   )}
