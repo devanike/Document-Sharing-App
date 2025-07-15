@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { Progress } from "@/components/ui/progress"
 import { supabase } from "@/lib/supabase"
 import { calculateFileHash, formatFileSize } from "@/lib/utils"
 import type { User } from "@/lib/types"
@@ -38,8 +37,6 @@ export default function UploadPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [file, setFile] = useState<File | null>(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [currentStep, setCurrentStep] = useState("")
   const [retryCount, setRetryCount] = useState(0)
   const [isRetrying, setIsRetrying] = useState(false)
   const [form, setForm] = useState({
@@ -126,7 +123,6 @@ export default function UploadPage() {
         return prevForm
       })
       setError("")
-      setUploadProgress(0)
     }
   }, [validateFile])
 
@@ -140,64 +136,6 @@ export default function UploadPage() {
   const handleSelectChange = useCallback((id: string, value: string) => {
     setForm((prevForm) => ({ ...prevForm, [id]: value }))
   }, [])
-
-  // Retry logic with exponential backoff
-  const retryOperation = useCallback(async (operation: () => Promise<any>, maxRetries: number = 3): Promise<any> => {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation()
-      } catch (error: any) {
-        if (attempt === maxRetries) {
-          throw error
-        }
-        
-        // Exponential backoff: wait 1s, then 2s, then 4s
-        const delay = Math.pow(2, attempt) * 1000
-        setRetryCount(attempt + 1)
-        setIsRetrying(true)
-        setCurrentStep(`Retrying... (${attempt + 1}/${maxRetries})`)
-        
-        await new Promise(resolve => setTimeout(resolve, delay))
-      }
-    }
-  }, [])
-
-  // Upload with progress tracking
-  // const uploadFileWithProgress = useCallback(async (filePath: string, file: File) => {
-  //   return new Promise((resolve, reject) => {
-  //     const xhr = new XMLHttpRequest()
-      
-  //     // Track upload progress
-  //     xhr.upload.addEventListener('progress', (e) => {
-  //       if (e.lengthComputable) {
-  //         const percentComplete = (e.loaded / e.total) * 100
-  //         setUploadProgress(percentComplete)
-  //       }
-  //     })
-      
-  //     xhr.onload = () => {
-  //       if (xhr.status === 200) {
-  //         resolve(xhr.response)
-  //       } else {
-  //         reject(new Error(`Upload failed with status ${xhr.status}`))
-  //       }
-  //     }
-      
-  //     xhr.onerror = () => reject(new Error('Upload failed'))
-      
-  //     // Use Supabase storage upload (fallback to regular method if XMLHttpRequest doesn't work)
-  //     supabase.storage.from("documents").upload(filePath, file)
-  //       .then(result => {
-  //         if (result.error) {
-  //           reject(result.error)
-  //         } else {
-  //           setUploadProgress(100)
-  //           resolve(result)
-  //         }
-  //       })
-  //       .catch(reject)
-  //   })
-  // }, [])
 
   // Main form submission logic
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
@@ -227,81 +165,54 @@ export default function UploadPage() {
     setLoading(true)
     setError("")
     setSuccess("")
-    setUploadProgress(0)
     setRetryCount(0)
     setIsRetrying(false)
 
-    try {
-      // Step 1: Calculate file hash
-      setCurrentStep("Calculating file hash...")
-      setUploadProgress(10)
-      
-      const fileHash = await retryOperation(async () => {
-        return await calculateFileHash(file)
-      })
+    try {      
+      const fileHash = await calculateFileHash(file)
 
-      // Step 2: Check for duplicates
-      setCurrentStep("Checking for duplicates...")
-      setUploadProgress(20)
-      
-      const { data: existingDocuments, error: checkError } = await retryOperation(async () => {
-        return await supabase
-          .from("documents")
-          .select("id")
-          .eq("file_hash", fileHash)
-          .limit(1)
-      })
+      const { data, error } = await supabase
+      .from("documents")
+      .select("id")
+      .eq("file_hash", fileHash)
+      .limit(1)
 
-      if (checkError) {
-        throw checkError
-      }
-
-      if (existingDocuments && existingDocuments.length > 0) {
+      if (error) throw error
+      if (data && data.length > 0) {
         setError("This file (or an identical version) has already been uploaded.")
         return
       }
-
-      // Step 3: Upload file
-      setCurrentStep("Uploading file...")
-      setUploadProgress(30)
       
       const uniqueFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}` 
       const filePath = `${user.id}/${uniqueFileName}` 
 
-      await retryOperation(async () => {
-        const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
-        if (uploadError) {
-          if (uploadError.message.includes("duplicate key")) {
-            throw new Error("A file with this name already exists in your storage. Please rename your file or try again.")
-          } else {
-            throw uploadError
-          }
+      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
+      if (uploadError) {
+        if (uploadError.message.includes("duplicate key")) {
+          setError("A file with this name already exists in your storage. Please rename your file or try again.")
+        } else {
+          throw uploadError
         }
-      })
+        return
+      }
 
-      // Step 4: Save to database
-      setCurrentStep("Saving document metadata...")
-      setUploadProgress(90)
-      
-      const { error: dbError } = await retryOperation(async () => {
-        return await supabase.from("documents").insert({
-          title: form.title,
-          description: form.description || null,
-          file_name: file.name,
-          file_size: file.size,
-          file_type: file.type || "application/octet-stream",
-          file_hash: fileHash,
-          course_code: form.course_code,
-          course_title: form.course_title,
-          level: form.level,
-          semester: form.semester,
-          document_type: form.document_type,
-          is_public: form.is_public,
-          uploader_id: user.id,
-          uploader_role: user.role,
-          storage_path: filePath,
-          created_at: new Date().toISOString(),
-        })
+      const { error: dbError } = await supabase.from("documents").insert({
+        title: form.title,
+        description: form.description || null,
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.type || "application/octet-stream",
+        file_hash: fileHash,
+        course_code: form.course_code,
+        course_title: form.course_title,
+        level: form.level,
+        semester: form.semester,
+        document_type: form.document_type,
+        is_public: form.is_public,
+        uploader_id: user.id,
+        uploader_role: user.role,
+        storage_path: filePath,
+        created_at: new Date().toISOString(),
       })
 
       if (dbError) {
@@ -309,9 +220,6 @@ export default function UploadPage() {
         throw new Error(`Failed to save document metadata: ${dbError.message}`)
       }
 
-      // Step 5: Complete
-      setCurrentStep("Upload completed!")
-      setUploadProgress(100)
       setSuccess("Document uploaded successfully! 🎉 Redirecting to documents...")
       
       setFile(null)
@@ -332,13 +240,10 @@ export default function UploadPage() {
     } catch (err: any) {
       console.error("Upload process error:", err)
       setError(err.message || "An unexpected error occurred during upload.")
-      setCurrentStep("")
-      setUploadProgress(0)
     } finally {
       setLoading(false)
-      setIsRetrying(false)
     }
-  }, [file, user, form, router, validateFile, retryOperation])
+  }, [file, user, form, router, validateFile])
 
   // Show loading spinner while authenticating
   if (!user) {
@@ -403,23 +308,6 @@ export default function UploadPage() {
               </div>
               {!file && <p className="text-red-500 text-sm">A file is required to upload.</p>} 
             </div>
-
-            {/* Progress indicator */}
-            {loading && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{currentStep}</span>
-                  {isRetrying && (
-                    <div className="flex items-center gap-1 text-sm text-blue-600">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Retry {retryCount}/3
-                    </div>
-                  )}
-                </div>
-                <Progress value={uploadProgress} className="w-full" />
-                <p className="text-xs text-gray-500">{Math.round(uploadProgress)}% complete</p>
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
