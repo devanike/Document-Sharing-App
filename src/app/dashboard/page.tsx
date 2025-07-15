@@ -275,7 +275,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Centralized error and success messages */}
+      {/* error and success messages */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -290,12 +290,13 @@ export default function DashboardPage() {
       )}
 
       {/* Dashboard Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-4">
-        <Card>
+      {/* <div className="grid gap-6 md:grid-cols-4">
+        <Card className="flex flex-col full">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Total Documents</CardTitle>
           </CardHeader>
-          <CardContent>
+          <div className="flex-grow" />
+          <CardContent className="">
             <div className="text-2xl font-bold">{totalUserDocumentCount}</div>
           </CardContent>
         </Card>
@@ -322,6 +323,48 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold capitalize">{user.role}</div>
           </CardContent>
+        </Card>
+      </div> */}
+
+      <div className="grid gap-6 md:grid-cols-4">
+        <Card className="flex flex-col h-30 p-4 rounded-2xl shadow-md">
+          <div className="flex flex-col flex-grow justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">Total Documents</h4>
+            </div>
+            <div className="text-3xl font-bold">{totalUserDocumentCount}</div>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col h-30 p-4 rounded-2xl shadow-md">
+          <div className="flex flex-col flex-grow justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">Public Documents</h4>
+            </div>
+            <div className="text-3xl font-bold">
+              {userDocuments.filter((doc) => doc.is_public).length}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col h-30 p-4 rounded-2xl shadow-md">
+          <div className="flex flex-col flex-grow justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">Private Documents</h4>
+            </div>
+            <div className="text-3xl font-bold">
+              {userDocuments.filter((doc) => !doc.is_public).length}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="flex flex-col h-30 p-4 rounded-2xl shadow-md">
+          <div className="flex flex-col flex-grow justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">Account Type</h4>
+            </div>
+            <div className="text-3xl font-bold capitalize">{user.role}</div>
+          </div>
         </Card>
       </div>
 
