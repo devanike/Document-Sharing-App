@@ -1,7 +1,5 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import crypto from "crypto"
-import SparkMD5 from "spark-md5"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -25,50 +23,106 @@ export function formatDate(dateString: string): string {
   })
 }
 
-
+// Mobile-optimized file hash calculation
 export async function calculateFileHash(file: File): Promise<string> {
   try {
-    // Check if we're in a browser environment and crypto is available
-    const isBrowser = typeof window !== "undefined"
-    const hasCrypto = isBrowser && typeof window.crypto !== "undefined" && window.crypto.subtle
-
-    // For mobile devices or large files, use a simple metadata-based hash
+    // Always use lightweight metadata-based hash for mobile reliability
+    // This avoids memory issues and main thread blocking
     const isMobile =
-      isBrowser && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-    const isLargeFile = file.size > 5 * 1024 * 1024 // 5MB
+      typeof window !== "undefined" &&
+      (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        // Additional mobile detection
+        window.innerWidth <= 768 ||
+        // Check for touch capability
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0)
 
-    if (isMobile || isLargeFile || !hasCrypto) {
-      // Use file metadata for hash (fast and memory-efficient)
-      const hashString = `${file.name}-${file.size}-${file.lastModified}-${file.type}`
-      let hash = 0
-      for (let i = 0; i < hashString.length; i++) {
-        const char = hashString.charCodeAt(i)
-        hash = (hash << 5) - hash + char
-        hash = hash & hash // Convert to 32-bit integer
+    // Use lightweight hash for mobile devices or files > 1MB
+    if (isMobile || file.size > 1024 * 1024) {
+      console.log("Using lightweight hash for mobile/large file")
+      return generateLightweightHash(file)
+    }
+
+    // For desktop with small files, try Web Crypto API with timeout
+    const hasCrypto = typeof window !== "undefined" && window.crypto && window.crypto.subtle
+
+    if (hasCrypto && file.size <= 1024 * 1024) {
+      // Only for files <= 1MB
+      try {
+        console.log("Attempting Web Crypto hash for small desktop file")
+
+        // Add timeout to prevent hanging
+        const hashPromise = computeWebCryptoHash(file)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Hash timeout")), 3000)
+        })
+
+        const hash = (await Promise.race([hashPromise, timeoutPromise])) as string
+        console.log("Web Crypto hash successful")
+        return hash
+      } catch (error) {
+        console.warn("Web Crypto hash failed, falling back to lightweight:", error)
+        return generateLightweightHash(file)
       }
-      return Math.abs(hash).toString(16).padStart(8, "0")
     }
 
-    // For desktop with smaller files, try Web Crypto API
-    if (hasCrypto) {
-      const arrayBuffer = await file.arrayBuffer()
-      const hashBuffer = await window.crypto.subtle.digest("SHA-256", arrayBuffer)
-      const hashArray = Array.from(new Uint8Array(hashBuffer))
-      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
-    }
+    // Default to lightweight hash
+    return generateLightweightHash(file)
   } catch (error) {
-    console.warn("Hash calculation failed, using fallback:", error)
+    console.warn("Hash calculation failed, using emergency fallback:", error)
+    return generateEmergencyHash(file)
+  }
+}
+
+// Lightweight metadata-based hash (no file reading required)
+function generateLightweightHash(file: File): string {
+  const hashString = `${file.name}-${file.size}-${file.lastModified}-${file.type}-${Date.now()}`
+  let hash = 0
+
+  for (let i = 0; i < hashString.length; i++) {
+    const char = hashString.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash // Convert to 32-bit integer
   }
 
-  // Final fallback: simple metadata hash
-  const fallbackString = `${file.name}-${file.size}-${file.lastModified}-${file.type}`
-  let fallbackHash = 0
-  for (let i = 0; i < fallbackString.length; i++) {
-    const char = fallbackString.charCodeAt(i)
-    fallbackHash = (fallbackHash << 5) - fallbackHash + char
-    fallbackHash = fallbackHash & fallbackHash
+  return Math.abs(hash).toString(16).padStart(8, "0")
+}
+
+// Web Crypto API hash (for small desktop files only)
+async function computeWebCryptoHash(file: File): Promise<string> {
+  // Read file in chunks to avoid memory issues
+  const chunkSize = 64 * 1024 // 64KB chunks
+  const chunks: ArrayBuffer[] = []
+
+  for (let start = 0; start < file.size; start += chunkSize) {
+    const end = Math.min(start + chunkSize, file.size)
+    const chunk = file.slice(start, end)
+    const arrayBuffer = await chunk.arrayBuffer()
+    chunks.push(arrayBuffer)
   }
-  return Math.abs(fallbackHash).toString(16).padStart(8, "0")
+
+  // Combine chunks
+  const totalSize = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
+  const combined = new Uint8Array(totalSize)
+  let offset = 0
+
+  for (const chunk of chunks) {
+    combined.set(new Uint8Array(chunk), offset)
+    offset += chunk.byteLength
+  }
+
+  // Hash the combined data
+  const hashBuffer = await window.crypto.subtle.digest("SHA-256", combined)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+// Emergency fallback hash
+function generateEmergencyHash(file: File): string {
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).substring(2)
+  const fileInfo = `${file.name.length}-${file.size}-${timestamp}`
+  return `${fileInfo}-${random}`.replace(/[^a-zA-Z0-9]/g, "").substring(0, 16)
 }
 
 export function generateOTP(): string {
