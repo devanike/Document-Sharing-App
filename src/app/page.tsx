@@ -41,12 +41,12 @@ export default function HomePage() {
       <section className="container mx-auto px-4">
         <div className="relative h-64 md:h-96 rounded-xl overflow-hidden">
           <Image
-            src="/placeholder.svg?height=400&width=800"
+            src="/images/Dept.jpeg"
             alt="Computer Science Department"
             fill
             className="object-cover"
           />
-          <div className="absolute inset-0 bg-blue-900/20 flex items-center justify-center">
+          <div className="absolute inset-0 bg-blue-900/50 flex items-center justify-center">
             <div className="text-center text-white">
               <h2 className="text-3xl md:text-4xl font-bold mb-2">Computer Science Department</h2>
               <p className="text-lg">Excellence in Technology Education</p>

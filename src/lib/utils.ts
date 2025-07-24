@@ -25,72 +25,51 @@ export function formatDate(dateString: string): string {
   })
 }
 
-// export async function calculateFileHash(file: File): Promise<string> {
-//   try {
-//     // Check if crypto.subtle is available
-//     if (!crypto || !crypto.subtle) {
-//       console.warn('Web Crypto API not available, using fallback hash');
-//       // Fallback: use file name + size + lastModified as a simple hash
-//       return btoa(`${file.name}-${file.size}-${file.lastModified}`);
-//     }
-
-//     // Read the file as ArrayBuffer
-//     const arrayBuffer = await file.arrayBuffer();
-    
-//     // Calculate SHA-256 hash
-//     const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-    
-//     // Convert to hex string
-//     const hashArray = Array.from(new Uint8Array(hashBuffer));
-//     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    
-//     return hashHex;
-//   } catch (error) {
-//     console.error('Error calculating file hash:', error);
-//     // Fallback hash if crypto fails
-//     return btoa(`${file.name}-${file.size}-${file.lastModified}`);
-//   }
-// }
 
 export async function calculateFileHash(file: File): Promise<string> {
   try {
-    if (crypto?.subtle) {
+    // Check if we're in a browser environment and crypto is available
+    const isBrowser = typeof window !== "undefined"
+    const hasCrypto = isBrowser && typeof window.crypto !== "undefined" && window.crypto.subtle
+
+    // For mobile devices or large files, use a simple metadata-based hash
+    const isMobile =
+      isBrowser && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    const isLargeFile = file.size > 5 * 1024 * 1024 // 5MB
+
+    if (isMobile || isLargeFile || !hasCrypto) {
+      // Use file metadata for hash (fast and memory-efficient)
+      const hashString = `${file.name}-${file.size}-${file.lastModified}-${file.type}`
+      let hash = 0
+      for (let i = 0; i < hashString.length; i++) {
+        const char = hashString.charCodeAt(i)
+        hash = (hash << 5) - hash + char
+        hash = hash & hash // Convert to 32-bit integer
+      }
+      return Math.abs(hash).toString(16).padStart(8, "0")
+    }
+
+    // For desktop with smaller files, try Web Crypto API
+    if (hasCrypto) {
       const arrayBuffer = await file.arrayBuffer()
-      const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer)
+      const hashBuffer = await window.crypto.subtle.digest("SHA-256", arrayBuffer)
       const hashArray = Array.from(new Uint8Array(hashBuffer))
-      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("")
+      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
     }
   } catch (error) {
-    console.warn("Web Crypto API failed, using spark-md5 fallback:", error)
+    console.warn("Hash calculation failed, using fallback:", error)
   }
 
-  return new Promise((resolve, reject) => {
-    const chunkSize = 2097152 // 2MB
-    const spark = new SparkMD5.ArrayBuffer()
-    const fileReader = new FileReader()
-    let cursor = 0
-
-    fileReader.onload = (e) => {
-      spark.append(e.target?.result as ArrayBuffer)
-      cursor += chunkSize
-      if (cursor < file.size) {
-        readNext()
-      } else {
-        resolve(spark.end())
-      }
-    }
-
-    fileReader.onerror = () => reject(new Error("Failed to read file for hashing"))
-
-    function readNext() {
-      const slice = file.slice(cursor, cursor + chunkSize)
-      fileReader.readAsArrayBuffer(slice)
-    }
-
-    readNext()
-  })
+  // Final fallback: simple metadata hash
+  const fallbackString = `${file.name}-${file.size}-${file.lastModified}-${file.type}`
+  let fallbackHash = 0
+  for (let i = 0; i < fallbackString.length; i++) {
+    const char = fallbackString.charCodeAt(i)
+    fallbackHash = (fallbackHash << 5) - fallbackHash + char
+    fallbackHash = fallbackHash & fallbackHash
+  }
+  return Math.abs(fallbackHash).toString(16).padStart(8, "0")
 }
-
 
 export function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
