@@ -12,6 +12,7 @@ export function Header() {
   const [user, setUser] = useState<UserType | null>(null)
   const [loading, setLoading] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -46,10 +47,29 @@ export function Header() {
     }
   }
 
+  // async function handleSignOut() {
+  //   await supabase.auth.signOut()
+  //   router.push("/")
+  //   setIsMobileMenuOpen(false)
+  // }
+
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    router.push("/")
-    setIsMobileMenuOpen(false)
+    try {
+      setIsSigningOut(true)
+
+      // First navigate to home page (this happens immediately)
+      router.push("/")
+
+      // Then sign out in the background (this can take time)
+      setTimeout(async () => {
+        await supabase.auth.signOut()
+        setIsMobileMenuOpen(false)
+        setIsSigningOut(false)
+      }, 100)
+    } catch (error) {
+      console.error("Sign out error:", error)
+      setIsSigningOut(false)
+    }
   }
 
   const toggleMobileMenu = () => {
@@ -99,8 +119,16 @@ export function Header() {
                       <Upload className="w-4 h-4" />
                     </Link>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={handleSignOut} className="cursor-pointer">
+                  {/* <Button variant="ghost" size="sm" onClick={handleSignOut} className="cursor-pointer">
                     <LogOut className="w-4 h-4" />
+                  </Button> */}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleSignOut} 
+                    disabled={isSigningOut}
+                  >
+                    <LogOut className={`w-4 h-4 ${isSigningOut ? "animate-pulse" : ""}`} />
                   </Button>
                 </div>
               </div>
@@ -182,10 +210,13 @@ export function Header() {
                     </Link>
                     <button 
                       onClick={handleSignOut}
+                      disabled={isSigningOut}
                       className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors py-2 cursor-pointer"
                     >
-                      <LogOut className="w-4 h-4" />
-                      Sign Out
+                      {/* <LogOut className="w-4 h-4" />
+                      Sign Out */}
+                      <LogOut className={`w-4 h-4 ${isSigningOut ? "animate-pulse" : ""}`} />
+                      {isSigningOut ? "Signing Out..." : "Sign Out"}
                     </button>
                   </div>
                 ) : (

@@ -14,7 +14,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { signUpStudent, verifyOTPAndCreateUser } from "@/lib/auth"
 import { validatePassword } from "@/lib/utils"
-import { Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, CheckCircle, Mail } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 export default function SignUpPage() {
   const [step, setStep] = useState<"signup" | "verify">("signup")
@@ -22,6 +23,8 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [emailCheckLoading, setEmailCheckLoading] = useState(false)
+  const [emailExists, setEmailExists] = useState(false)
   const [form, setForm] = useState({
     email: "",
     name: "",
@@ -31,6 +34,45 @@ export default function SignUpPage() {
     otp: "",
   })
   const router = useRouter()
+
+  const handleEmailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value
+    setForm({ ...form, email })
+
+    // Reset email check state when typing
+    setEmailExists(false)
+    setError("")
+
+    // If email is valid, check if it exists after a delay
+    if (email && email.includes("@") && email.includes(".")) {
+      setEmailCheckLoading(true)
+
+      // Debounce the check to avoid too many requests
+      const timer = setTimeout(async () => {
+        try {
+          // Check if the email already exists in the profiles table
+          const { data, error } = await supabase.from("profiles").select("email").eq("email", email).single()
+
+          if (data) {
+            // Email exists in profiles table
+            setEmailExists(true)
+          } else if (error && error.code === "PGRST116") {
+            // PGRST116 means "no rows returned" - email doesn't exist
+            setEmailExists(false)
+          } else if (error) {
+            // Some other error occurred
+            console.error("Email check error:", error)
+          }
+        } catch (error) {
+          console.error("Email check error:", error)
+        } finally {
+          setEmailCheckLoading(false)
+        }
+      }, 600)
+
+      return () => clearTimeout(timer)
+    }
+  }
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -147,7 +189,7 @@ export default function SignUpPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignUp} className="space-y-4">
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -157,6 +199,39 @@ export default function SignUpPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
               />
+            </div> */}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your.email@student.edu"
+                  value={form.email}
+                  onChange={handleEmailChange}
+                  required
+                  className={emailExists ? "border-red-500 pr-10" : ""}
+                />
+                {emailCheckLoading && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <LoadingSpinner size="sm" />
+                  </div>
+                )}
+                {emailExists && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  </div>
+                )}
+              </div>
+              {emailExists && (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <Mail className="h-3 w-3" />
+                  This email is already registered.{" "}
+                  <Link href="/login" className="underline">
+                    Sign in instead?
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

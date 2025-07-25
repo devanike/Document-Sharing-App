@@ -90,8 +90,7 @@ function generateLightweightHash(file: File): string {
 
 // Web Crypto API hash (for small desktop files only)
 async function computeWebCryptoHash(file: File): Promise<string> {
-  // Read file in chunks to avoid memory issues
-  const chunkSize = 64 * 1024 // 64KB chunks
+  const chunkSize = 64 * 1024 
   const chunks: ArrayBuffer[] = []
 
   for (let start = 0; start < file.size; start += chunkSize) {

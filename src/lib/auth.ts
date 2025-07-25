@@ -80,60 +80,33 @@ export async function verifyOTPAndCreateUser(
 }
 
 // export async function sendPasswordReset(email: string) {
-//   const { error } = await supabase.auth.resetPasswordForEmail(email)
+//   const { error } = await supabase.auth.resetPasswordForEmail(email, {
+//     redirectTo: `${window.location.origin}/reset-password`,
+//   });
 
-//   if (error) throw error
+//   if (error) throw error;
 
-//   return { message: "Password reset link sent to your email. The link will expire in 1 hour." }
-// }
-
-// export async function resetPassword(newPassword: string) {
-//   try {
-//     // First check if we have a valid session
-//     const {
-//       data: { session },
-//       error: sessionError,
-//     } = await supabase.auth.getSession()
-
-//     if (sessionError) {
-//       console.error("Session check error:", sessionError)
-//       throw new Error("Invalid session. Please request a new password reset.")
-//     }
-
-//     if (!session) {
-//       throw new Error("No active session. Please request a new password reset.")
-//     }
-
-//     console.log("Updating password for user:", session.user.id)
-
-//     const { data, error } = await supabase.auth.updateUser({
-//       password: newPassword,
-//     })
-
-//     if (error) {
-//       console.error("Password update error:", error)
-//       if (error.message.includes("expired") || error.message.includes("invalid")) {
-//         throw new Error("Your session has expired. Please request a new password reset.")
-//       }
-//       throw error
-//     }
-
-//     console.log("Password updated successfully:", !!data.user)
-//     return { message: "Password updated successfully" }
-//   } catch (error: any) {
-//     console.error("Reset password error:", error)
-//     throw new Error(error.message || "Failed to update password")
-//   }
+//   return { message: "Password reset link sent to your email. The link will expire in 1 hour." };
 // }
 
 export async function sendPasswordReset(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
 
-  if (error) throw error;
+    if (error) {
+      console.error("Password reset error:", error)
+      throw error
+    }
 
-  return { message: "Password reset link sent to your email. The link will expire in 1 hour." };
+    return {
+      message: "Password reset link sent to your email. Please check your inbox and spam folder.",
+    }
+  } catch (error: any) {
+    console.error("Send password reset error:", error)
+    throw new Error(error.message || "Failed to send password reset email")
+  }
 }
 
 export async function resetPassword(newPassword: string) {
